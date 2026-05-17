@@ -1,0 +1,45 @@
+name: Build TWRP for Moto G56 (bogota)
+
+on:
+  workflow_dispatch:
+    inputs:
+      MANIFEST_BRANCH:
+        description: TWRP Manifest Branch
+        required: true
+        default: twrp-12.1
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      MANIFEST_URL: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git
+      DEVICE_TREE_URL: https://github.com/o4r5/android_device_motorola_bogota
+      DEVICE_PATH: device/motorola/bogota
+      DEVICE_NAME: bogota
+      MAKEFILE_NAME: twrp_bogota
+      BUILD_TARGET: recovery
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rokibhasansagar/slimhub_actions@main
+      - uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 12
+      - name: Install Dependencies
+        run: sudo apt update && sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 python-is-python3
+      - name: Install repo
+        run: mkdir -p ~/bin && curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo && chmod a+x ~/bin/repo && echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Sync
+        run: mkdir workspace && cd workspace && git config --global user.name "o4r5" && git config --global user.email "oommaaiirr7@gmail.com" && repo init --depth=1 -u $MANIFEST_URL -b twrp-12.1 && repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
+      - name: Clone Device Tree
+        run: cd workspace && git clone $DEVICE_TREE_URL $DEVICE_PATH --depth=1
+      - name: Build
+        run: cd workspace && source build/envsetup.sh && export ALLOW_MISSING_DEPENDENCIES=true && lunch $MAKEFILE_NAME-eng && make clean && make $BUILD_TARGETimage -j$(nproc --all) 2>&1 | tee build.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TWRP_Moto_G56_bogota
+          path: workspace/out/target/product/bogota/recovery.img
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build_log_failed
+          path: workspace/build.log
